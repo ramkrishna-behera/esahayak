@@ -28,7 +28,7 @@ interface NavItem {
 
 const navigationItems: NavItem[] = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/" },
-  { title: "Create Lead", icon: Plus, href: "/create" },
+  { title: "Create Lead", icon: Plus, href: "/buyers/new" },
   { title: "List & Search", icon: List, href: "/buyers" },
   { title: "View & Edit", icon: Eye, href: "/edit" },
   { title: "Import & Export", icon: Upload, href: "/import-export" },
@@ -121,7 +121,7 @@ export default function Sidebar({ className }: SidebarProps) {
       {/* Quick Action Button */}
       <div className="px-3 pb-4">
         <Button
-          onClick={() => router.push("/create")} // Points to create lead page
+          onClick={() => router.push("/buyers/new")} // Points to create lead page
           className={cn(
             "gap-2 bg-primary hover:bg-primary/90 text-primary-foreground",
             isCollapsed ? "w-10 h-10 p-0" : "w-full"
