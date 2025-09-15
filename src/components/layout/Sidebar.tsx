@@ -30,7 +30,7 @@ const navigationItems: NavItem[] = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/" },
   { title: "Create Lead", icon: Plus, href: "/buyers/new" },
   { title: "List & Search", icon: List, href: "/buyers" },
-  { title: "View & Edit", icon: Eye, href: "/edit" },
+//   { title: "View & Edit", icon: Eye, href: "/edit" },
   { title: "Import & Export", icon: Upload, href: "/import-export" },
 ];
 
