@@ -1,12 +1,14 @@
 // app/buyers/[id]/edit/page.tsx
 "use client"
 
-import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
+import { use } from "react"
+import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { supabase } from "@/lib/supabaseClient"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -17,9 +19,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+
 import { Loader2, Save, X } from "lucide-react"
 
-// 🔹 Validation Schema
+// ------------------------------------------------------
+// Schema
+// ------------------------------------------------------
 const buyerSchema = z.object({
   fullname: z.string().min(2).max(80),
   email: z.string().email().optional().or(z.literal("")),
@@ -42,15 +47,46 @@ const buyerSchema = z.object({
     "Dropped",
   ]),
   notes: z.string().max(1000).optional(),
-  tags: z.string().optional(), // for now simple CSV input
+  tags: z.string().optional(),
 })
 
 type BuyerForm = z.infer<typeof buyerSchema>
 
-export default function BuyerEditPage({ params }: { params: { id: string } }) {
-  const { id } = params
+// ------------------------------------------------------
+// Helper: buildDiff
+// ------------------------------------------------------
+function buildDiff(oldData: BuyerForm, newData: BuyerForm) {
+  debugger
+  console.log("🔍 buildDiff called")
+  console.log("➡️ Old Data:", oldData)
+  console.log("➡️ New Data:", newData)
+
+  const diff: Record<string, { old: any; new: any }> = {}
+  for (const key of Object.keys(newData) as (keyof BuyerForm)[]) {
+    if (oldData[key] !== newData[key]) {
+      console.log(`⚡ Field changed: ${key}`, {
+        old: oldData[key],
+        new: newData[key],
+      })
+      diff[key] = { old: oldData[key], new: newData[key] }
+    }
+  }
+
+  console.log("✅ Final Diff:", diff)
+  debugger
+  return diff
+}
+
+// ------------------------------------------------------
+// Component
+// ------------------------------------------------------
+export default function BuyerEditPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params) as { id: string }
   const router = useRouter()
+
   const [loading, setLoading] = useState(true)
+  const [authorized, setAuthorized] = useState(false)
+  const [checkedAuth, setCheckedAuth] = useState(false)
   const [initialData, setInitialData] = useState<BuyerForm | null>(null)
 
   const form = useForm<BuyerForm>({
@@ -58,82 +94,164 @@ export default function BuyerEditPage({ params }: { params: { id: string } }) {
     defaultValues: {},
   })
 
-  // Fetch buyer data
+  // ------------------------------------------------------
+  // Fetch buyer + check auth
+  // ------------------------------------------------------
   useEffect(() => {
     const fetchBuyer = async () => {
+      console.log("🚀 Fetching buyer with ID:", id)
+      debugger
       const { data, error } = await supabase
         .from("buyers")
         .select("*")
         .eq("id", id)
         .single()
 
+      console.log("📥 Supabase Response:", { data, error })
+      debugger
       if (error || !data) {
-        console.error(error)
+        console.error("❌ Failed to fetch buyer:", error)
+        setLoading(false)
         return
       }
+
+      // Auth check
+      try {
+        const userStr = localStorage.getItem("currentUser")
+        console.log("👤 Raw currentUser string from localStorage:", userStr)
+        debugger
+        if (userStr) {
+          const currentUser = JSON.parse(userStr)
+          console.log("👤 Parsed currentUser object:", currentUser)
+          debugger
+          if (
+            currentUser?.id === data.ownerid ||
+            currentUser?.role === "admin"
+          ) {
+            console.log("✅ Authorized user")
+            setAuthorized(true)
+          } else {
+            console.warn("⛔ Unauthorized user")
+          }
+        }
+      } catch (err) {
+        console.error("❌ Auth check failed", err)
+      }
+
+      setCheckedAuth(true)
       setInitialData(data)
-      form.reset(data) // fill form
+      console.log("📋 Setting initial form data:", data)
+      form.reset(data)
       setLoading(false)
     }
+
     fetchBuyer()
   }, [id, form])
 
-  // 🔹 Build diff object
-  const buildDiff = (oldData: BuyerForm, newData: BuyerForm) => {
-    const diff: Record<string, { old: any; new: any }> = {}
-    for (const key of Object.keys(newData) as (keyof BuyerForm)[]) {
-      if (oldData[key] !== newData[key]) {
-        diff[key] = { old: oldData[key], new: newData[key] }
-      }
-    }
-    return diff
-  }
-
+  // ------------------------------------------------------
+  // Handle submit
+  // ------------------------------------------------------
   const onSubmit = async (values: BuyerForm) => {
-    if (!initialData) return
-    setLoading(true)
+    console.log("📝 Form Submitted:", values)
+    debugger
+    if (!initialData) {
+      console.error("❌ No initialData, cannot save")
+      return
+    }
 
+    setLoading(true)
     const diff = buildDiff(initialData, values)
+
     if (Object.keys(diff).length === 0) {
+      console.log("ℹ️ No changes detected, skipping update")
+      debugger
       setLoading(false)
       router.push(`/buyers/${id}`)
       return
     }
 
-    // 1. Update buyers table
+    // Get current user
+    let changedBy: string | null = null
+    try {
+      const userStr = localStorage.getItem("currentUser")
+      console.log("👤 localStorage currentUser (raw):", userStr)
+      debugger
+      if (userStr) {
+        const currentUser = JSON.parse(userStr)
+        console.log("👤 Parsed currentUser:", currentUser)
+        debugger
+        changedBy = currentUser?.id ?? null
+      }
+    } catch (err) {
+      console.error("❌ Failed to parse currentUser", err)
+    }
+
+    // 1. Update buyers
+    console.log("🛠 Updating buyers row with values:", values)
     const { error: updateError } = await supabase
       .from("buyers")
       .update({ ...values, updatedat: new Date().toISOString() })
       .eq("id", id)
 
+    console.log("📤 Supabase Update Result:", { updateError })
+    debugger
     if (updateError) {
-      console.error(updateError)
+      console.error("❌ Update error", updateError)
       setLoading(false)
       return
     }
 
-    // 2. Insert into buyer_history
+    // 2. Insert into history
+    console.log("🛠 Inserting history with diff:", diff)
     const { error: historyError } = await supabase.from("buyer_history").insert({
       buyerid: id,
-      changedby: "22222222-2222-2222-2222-222222222222",
+      changedby: changedBy,
       diff,
     })
 
+    console.log("📤 Supabase History Insert Result:", { historyError })
+    debugger
     if (historyError) {
-      console.error(historyError)
+      console.error("❌ History insert error", historyError)
       setLoading(false)
       return
     }
 
+    console.log("✅ Successfully updated buyer + history")
     router.push(`/buyers/${id}`)
   }
 
-  if (loading) return <div className="p-6">Loading...</div>
+  // ------------------------------------------------------
+  // Render states
+  // ------------------------------------------------------
+  if (loading || !checkedAuth) return <div className="p-6">Loading...</div>
+
+  if (!authorized) {
+    return (
+      <div className="p-6 text-red-600 font-medium">
+        Only the Lead owner or an Admin can edit this buyer.
+      </div>
+    )
+  }
+
+  console.log("📦 RHF form state:", form.formState)
 
   return (
     <div className="min-h-screen p-4 bg-background">
       <h1 className="text-2xl font-bold mb-6">Edit Buyer</h1>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 sm:grid-cols-2">
+        <div className="mb-4 p-4 bg-yellow-100 text-yellow-800 rounded-md border border-yellow-300">
+            ⚠️ This page is under construction. Save functionality is temporarily disabled.
+        </div>
+
+      <form
+        onSubmit={form.handleSubmit((values) => {
+            console.log("🚀 RHF handleSubmit triggered")
+            console.log("📦 Values before onSubmit:", values)
+            onSubmit(values) // call your real submit handler
+        })}
+        className="grid gap-4 sm:grid-cols-2"
+        >
+
         {/* Full Name */}
         <div>
           <label className="text-sm font-medium">Full Name</label>
@@ -155,14 +273,23 @@ export default function BuyerEditPage({ params }: { params: { id: string } }) {
         {/* City */}
         <div>
           <label className="text-sm font-medium">City</label>
-          <Select onValueChange={(v) => form.setValue("city", v as BuyerForm["city"])} defaultValue={form.getValues("city")}>
+          <Select
+            onValueChange={(v) =>
+              form.setValue("city", v as BuyerForm["city"])
+            }
+            defaultValue={form.getValues("city")}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select city" />
             </SelectTrigger>
             <SelectContent>
-              {["Chandigarh", "Mohali", "Zirakpur", "Panchkula", "Other"].map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
+              {["Chandigarh", "Mohali", "Zirakpur", "Panchkula", "Other"].map(
+                (c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                )
+              )}
             </SelectContent>
           </Select>
         </div>
@@ -170,13 +297,20 @@ export default function BuyerEditPage({ params }: { params: { id: string } }) {
         {/* Property Type */}
         <div>
           <label className="text-sm font-medium">Property Type</label>
-          <Select onValueChange={(v) => form.setValue("propertytype", v as BuyerForm["propertytype"])} defaultValue={form.getValues("propertytype")}>
+          <Select
+            onValueChange={(v) =>
+              form.setValue("propertytype", v as BuyerForm["propertytype"])
+            }
+            defaultValue={form.getValues("propertytype")}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
               {["Apartment", "Villa", "Plot", "Office", "Retail"].map((t) => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -190,11 +324,19 @@ export default function BuyerEditPage({ params }: { params: { id: string } }) {
 
         {/* Buttons */}
         <div className="sm:col-span-2 flex gap-2 mt-4">
-          <Button type="submit" disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+          <Button type="submit" disabled>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1" />
+            ) : (
+              <Save className="h-4 w-4 mr-1" />
+            )}
             Save
           </Button>
-          <Button type="button" variant="outline" onClick={() => router.push(`/buyers/${id}`)}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push(`/buyers/${id}`)}
+          >
             <X className="h-4 w-4 mr-1" />
             Cancel
           </Button>
@@ -203,6 +345,8 @@ export default function BuyerEditPage({ params }: { params: { id: string } }) {
     </div>
   )
 }
+
+
 
 
 // Perfect 👍 thanks for the detailed breakdown and for sharing the model + current `/buyers/[id]` page.

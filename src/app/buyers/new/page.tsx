@@ -10,11 +10,7 @@ import {
   User,
   Mail,
   Phone,
-  Building,
-  Home,
-  Briefcase,
   Tag,
-  FileText,
 } from "lucide-react";
 
 export default function NewBuyer() {
@@ -37,6 +33,20 @@ export default function NewBuyer() {
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // ✅ Utility to get logged-in user id or fallback
+  const getUserId = () => {
+    try {
+      const stored = localStorage.getItem("currentUser");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.id) return parsed.id;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return "22222222-2222-2222-2222-222222222222";
+  };
 
   const handleChange = (field: string, value: string) => {
     setFormData({ ...formData, [field]: value });
@@ -73,6 +83,8 @@ export default function NewBuyer() {
     setLoading(true);
 
     try {
+      const userId = getUserId();
+
       // Step 1: Insert into buyers
       const { data: buyer, error: buyerError } = await supabase
         .from("buyers")
@@ -98,7 +110,7 @@ export default function NewBuyer() {
             tags: formData.tags
               ? formData.tags.split(",").map((t) => t.trim())
               : [],
-            ownerid: "11111111-1111-1111-1111-111111111111",
+            ownerid: userId,
           },
         ])
         .select()
@@ -112,7 +124,7 @@ export default function NewBuyer() {
         .insert([
           {
             buyerid: buyer.id,
-            changedby: "11111111-1111-1111-1111-111111111111",
+            changedby: userId,
             diff: {
               Create: { new: "Exists", old: "Didn't existed" },
             },

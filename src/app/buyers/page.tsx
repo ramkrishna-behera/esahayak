@@ -5,6 +5,7 @@ import { Pagination } from "@/components/Pagination"
 import { Filters } from "@/components/Filter"
 import { Users } from "lucide-react"
 import { BuyersTableWithActions } from "@/components/BuyersTableWithActions"
+import AuthGuard from "@/components/AuthGuard"
 
 const pageSize = 10
 
@@ -50,7 +51,8 @@ export default async function BuyersPage({ searchParams }: Props) {
   const totalPages = Math.ceil(total / pageSize)
 
   return (
-    <div className="min-h-screen bg-background p-4">
+    <AuthGuard>
+        <div className="min-h-screen bg-background p-4">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
@@ -71,5 +73,6 @@ export default async function BuyersPage({ searchParams }: Props) {
       {/* Pagination */}
       {totalPages > 1 && <Pagination page={page} totalPages={totalPages} />}
     </div>
+    </AuthGuard>
   )
 }
